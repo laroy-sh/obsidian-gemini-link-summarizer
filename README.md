@@ -67,3 +67,20 @@ this.registerEvent(
 
 When you right-click in an editor, Obsidian provides the current `menu` and `editor`.  
 The plugin extracts a URL from the selection or link under cursor. If found, it adds **Summarize via Gemini** to that menu.
+
+## Releases (GitHub Actions)
+
+Pushing a version tag like `v0.1.0` triggers a workflow that builds the plugin and uploads release assets:
+
+- `main.js`
+- `manifest.json`
+- `versions.json`
+- `styles.css`
+- `obsidian-gemini-link-summarizer-v0.1.0.zip`
+
+To publish:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
