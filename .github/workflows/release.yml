@@ -34,7 +34,7 @@ jobs:
           mkdir -p dist
           cp manifest.json main.js versions.json styles.css dist/
           cd dist
-          zip -r "../obsidian-gemini-link-summarizer-${GITHUB_REF_NAME}.zip" .
+          zip -r "../obsidian-ai-link-summarizer-${GITHUB_REF_NAME}.zip" .
 
       - name: Release
         uses: softprops/action-gh-release@v2
@@ -45,4 +45,4 @@ jobs:
             manifest.json
             versions.json
             styles.css
-            obsidian-gemini-link-summarizer-${{ github.ref_name }}.zip
+            obsidian-ai-link-summarizer-${{ github.ref_name }}.zip

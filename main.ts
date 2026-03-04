@@ -1,12 +1,23 @@
 import { App, Editor, EditorPosition, MarkdownView, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
+
+type SummaryProvider = "gemini" | "openai";
 
 interface GeminiLinkSummarizerSettings {
-  apiKey: string;
-  modelName: string;
+  provider: SummaryProvider;
+  geminiApiKey: string;
+  geminiModelName: string;
+  openaiApiKey: string;
+  openaiModelName: string;
   customPrompt: string;
   includeTimestamp: boolean;
   summaryLengthChars: number;
+}
+
+interface LegacySettings {
+  apiKey?: string;
+  modelName?: string;
 }
 
 interface UrlTarget {
@@ -15,20 +26,24 @@ interface UrlTarget {
 }
 
 const DEFAULT_SETTINGS: GeminiLinkSummarizerSettings = {
-  apiKey: "",
-  modelName: "gemini-2.5-flash",
+  provider: "gemini",
+  geminiApiKey: "",
+  geminiModelName: "gemini-3.1-flash-lite-preview",
+  openaiApiKey: "",
+  openaiModelName: "gpt-4.1-mini",
   customPrompt: "",
   includeTimestamp: false,
   summaryLengthChars: 300
 };
 
-const MENU_TITLE = "Summarize via Gemini";
-const NOTICE_PREFIX = "Gemini link summarizer";
+const MENU_TITLE = "Summarize link";
+const NOTICE_PREFIX = "AI link summarizer";
 const UNREADABLE_PAGE_ERROR = "UNREADABLE_PAGE";
 const EMPTY_SUMMARY_ERROR = "EMPTY_SUMMARY";
 const MIN_SUMMARY_LENGTH_CHARS = 120;
 const MAX_SUMMARY_LENGTH_CHARS = 1200;
 const FLASH_MODEL_PRESETS = ["gemini-3.1-flash-lite-preview", "gemini-3.0-flash-preview"] as const;
+const OPENAI_MODEL_PRESETS = ["gpt-4.1-mini", "gpt-4.1"] as const;
 
 function clampSummaryLengthChars(value: number): number {
   if (!Number.isFinite(value)) {
@@ -62,9 +77,20 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = (await this.loadData()) as Partial<GeminiLinkSummarizerSettings> & LegacySettings;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+    if (!this.settings.geminiApiKey && typeof loaded.apiKey === "string") {
+      this.settings.geminiApiKey = loaded.apiKey;
+    }
+    if (!this.settings.geminiModelName && typeof loaded.modelName === "string") {
+      this.settings.geminiModelName = loaded.modelName;
+    }
     this.settings.summaryLengthChars = clampSummaryLengthChars(this.settings.summaryLengthChars);
-    this.settings.modelName = this.settings.modelName.trim() || DEFAULT_SETTINGS.modelName;
+    this.settings.provider = this.settings.provider === "openai" ? "openai" : "gemini";
+    this.settings.geminiModelName = this.settings.geminiModelName.trim() || DEFAULT_SETTINGS.geminiModelName;
+    this.settings.openaiModelName = this.settings.openaiModelName.trim() || DEFAULT_SETTINGS.openaiModelName;
+    this.settings.geminiApiKey = this.settings.geminiApiKey.trim();
+    this.settings.openaiApiKey = this.settings.openaiApiKey.trim();
   }
 
   async saveSettings(): Promise<void> {
@@ -91,13 +117,13 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
       return;
     }
 
-    if (!this.settings.apiKey.trim()) {
-      new Notice(`${NOTICE_PREFIX}: add your Gemini API key in plugin settings.`);
+    if (!this.getActiveApiKey()) {
+      new Notice(`${NOTICE_PREFIX}: add your ${this.getActiveProviderLabel()} API key in plugin settings.`);
       return;
     }
 
     try {
-      const summary = await this.requestGeminiSummary(cleanedUrl);
+      const summary = await this.requestSummary(cleanedUrl);
       const output = `${this.formatOutput(summary)}\n`;
       editor.replaceRange(output, target.insertBefore);
       new Notice(`${NOTICE_PREFIX}: summary inserted.`);
@@ -230,9 +256,21 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     }
   }
 
+  private getActiveProviderLabel(): string {
+    return this.settings.provider === "openai" ? "OpenAI" : "Gemini";
+  }
+
+  private getActiveApiKey(): string {
+    return this.settings.provider === "openai" ? this.settings.openaiApiKey.trim() : this.settings.geminiApiKey.trim();
+  }
+
+  private async requestSummary(url: string): Promise<string> {
+    return this.settings.provider === "openai" ? this.requestOpenAiSummary(url) : this.requestGeminiSummary(url);
+  }
+
   private async requestGeminiSummary(url: string): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: this.settings.apiKey.trim() });
-    const model = this.settings.modelName.trim() || DEFAULT_SETTINGS.modelName;
+    const ai = new GoogleGenAI({ apiKey: this.settings.geminiApiKey.trim() });
+    const model = this.settings.geminiModelName.trim() || DEFAULT_SETTINGS.geminiModelName;
     const prompt = this.buildSummaryPrompt(url);
 
     const response = await ai.models.generateContent({
@@ -249,6 +287,33 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     }
 
     const normalized = responseText.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      throw new Error(UNREADABLE_PAGE_ERROR);
+    }
+
+    return this.fitSummaryLength(normalized);
+  }
+
+  private async requestOpenAiSummary(url: string): Promise<string> {
+    const client = new OpenAI({
+      apiKey: this.settings.openaiApiKey.trim(),
+      dangerouslyAllowBrowser: true
+    });
+    const model = this.settings.openaiModelName.trim() || DEFAULT_SETTINGS.openaiModelName;
+    const prompt = this.buildOpenAiPrompt(url);
+
+    const response = await client.responses.create({
+      model,
+      tools: [{ type: "web_search_preview" }],
+      input: prompt
+    });
+
+    const outputText = this.extractOpenAiResponseText(response);
+    if (!outputText) {
+      throw new Error(EMPTY_SUMMARY_ERROR);
+    }
+
+    const normalized = outputText.replace(/\s+/g, " ").trim();
     if (!normalized) {
       throw new Error(UNREADABLE_PAGE_ERROR);
     }
@@ -274,6 +339,11 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     ].join(" ");
 
     return `${basePrompt}\n\nAdditional requirements: ${constraints}\n\nURL: ${url}`;
+  }
+
+  private buildOpenAiPrompt(url: string): string {
+    const core = this.buildSummaryPrompt(url);
+    return `Use the web search tool to fetch and read this exact URL, then answer.\n${core}`;
   }
 
   private fitSummaryLength(summary: string): string {
@@ -333,6 +403,37 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
       .trim();
   }
 
+  private extractOpenAiResponseText(response: unknown): string {
+    const responseObj = response as Record<string, unknown>;
+    const outputText = responseObj.output_text;
+    if (typeof outputText === "string" && outputText.trim().length > 0) {
+      return outputText.trim();
+    }
+
+    const output = responseObj.output;
+    if (!Array.isArray(output)) {
+      return "";
+    }
+
+    const chunks: string[] = [];
+    for (const entry of output) {
+      const entryObj = entry as Record<string, unknown>;
+      const content = entryObj.content;
+      if (!Array.isArray(content)) {
+        continue;
+      }
+
+      for (const part of content) {
+        const partObj = part as Record<string, unknown>;
+        if (typeof partObj.text === "string" && partObj.text.trim().length > 0) {
+          chunks.push(partObj.text.trim());
+        }
+      }
+    }
+
+    return chunks.join("\n").trim();
+  }
+
   private formatOutput(summary: string): string {
     if (!this.settings.includeTimestamp) {
       return summary;
@@ -345,13 +446,14 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
   private toNoticeMessage(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
     const lower = message.toLowerCase();
+    const provider = this.getActiveProviderLabel();
 
     if (message === UNREADABLE_PAGE_ERROR || message === EMPTY_SUMMARY_ERROR) {
       return `${NOTICE_PREFIX}: unsupported or unreadable page.`;
     }
 
     if (lower.includes("api key") || lower.includes("unauth") || lower.includes("permission")) {
-      return `${NOTICE_PREFIX}: Gemini request failed. Check API key and model settings.`;
+      return `${NOTICE_PREFIX}: ${provider} request failed. Check API key and model settings.`;
     }
 
     if (
@@ -364,7 +466,7 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
       return `${NOTICE_PREFIX}: unsupported or unreadable page.`;
     }
 
-    return `${NOTICE_PREFIX}: Gemini request failure (${message}).`;
+    return `${NOTICE_PREFIX}: ${provider} request failure (${message}).`;
   }
 }
 
@@ -379,28 +481,42 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName("Gemini link summarizer").setHeading();
+    new Setting(containerEl).setName("AI link summarizer").setHeading();
+
+    new Setting(containerEl)
+      .setName("Provider")
+      .setDesc("Select which provider to use for link summaries.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("gemini", "Gemini")
+          .addOption("openai", "OpenAI")
+          .setValue(this.plugin.settings.provider)
+          .onChange(async (value) => {
+            this.plugin.settings.provider = value === "openai" ? "openai" : "gemini";
+            await this.plugin.saveSettings();
+          })
+      );
 
     new Setting(containerEl)
       .setName("Gemini API key")
       .setDesc("API key used for Gemini requests.")
       .addText((text) =>
         text
-          .setValue(this.plugin.settings.apiKey)
+          .setValue(this.plugin.settings.geminiApiKey)
           .onChange(async (value) => {
-            this.plugin.settings.apiKey = value.trim();
+            this.plugin.settings.geminiApiKey = value.trim();
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
-      .setName("Model name")
+      .setName("Gemini model name")
       .setDesc("Gemini model to use. You can type any model name.")
       .addText((text) =>
         text
-          .setValue(this.plugin.settings.modelName)
+          .setValue(this.plugin.settings.geminiModelName)
           .onChange(async (value) => {
-            this.plugin.settings.modelName = value.trim() || DEFAULT_SETTINGS.modelName;
+            this.plugin.settings.geminiModelName = value.trim() || DEFAULT_SETTINGS.geminiModelName;
             await this.plugin.saveSettings();
           })
       );
@@ -410,14 +526,52 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
       .setDesc("Quickly choose a recent Flash preview model.")
       .addButton((button) =>
         button.setButtonText("3.1 flash lite preview").onClick(async () => {
-          this.plugin.settings.modelName = FLASH_MODEL_PRESETS[0];
+          this.plugin.settings.geminiModelName = FLASH_MODEL_PRESETS[0];
           await this.plugin.saveSettings();
           this.display();
         })
       )
       .addButton((button) =>
         button.setButtonText("3.0 flash preview").onClick(async () => {
-          this.plugin.settings.modelName = FLASH_MODEL_PRESETS[1];
+          this.plugin.settings.geminiModelName = FLASH_MODEL_PRESETS[1];
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("OpenAI API key")
+      .setDesc("API key used for OpenAI requests.")
+      .addText((text) =>
+        text.setValue(this.plugin.settings.openaiApiKey).onChange(async (value) => {
+          this.plugin.settings.openaiApiKey = value.trim();
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("OpenAI model name")
+      .setDesc("OpenAI model to use. You can type any model name.")
+      .addText((text) =>
+        text.setValue(this.plugin.settings.openaiModelName).onChange(async (value) => {
+          this.plugin.settings.openaiModelName = value.trim() || DEFAULT_SETTINGS.openaiModelName;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("OpenAI model presets")
+      .setDesc("Quickly choose a common OpenAI model.")
+      .addButton((button) =>
+        button.setButtonText("gpt-4.1-mini").onClick(async () => {
+          this.plugin.settings.openaiModelName = OPENAI_MODEL_PRESETS[0];
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      )
+      .addButton((button) =>
+        button.setButtonText("gpt-4.1").onClick(async () => {
+          this.plugin.settings.openaiModelName = OPENAI_MODEL_PRESETS[1];
           await this.plugin.saveSettings();
           this.display();
         })
