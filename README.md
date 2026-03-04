@@ -1,7 +1,7 @@
 # Gemini Link Summarizer (Obsidian Community Plugin)
 
 Right-click a URL in the editor and run **Summarize via Gemini**.  
-The plugin sends the URL to Gemini using **URL Context**, then inserts a concise summary into the current note at the cursor.
+The plugin sends the URL to Gemini using **URL Context**, then inserts a concise summary into the current note on a new line **before the detected link**.
 
 ## Features
 
@@ -11,7 +11,7 @@ The plugin sends the URL to Gemini using **URL Context**, then inserts a concise
   - Markdown/raw link under cursor on right-click
 - Adds editor context menu action: **Summarize via Gemini**
 - Uses official Google GenAI SDK (`@google/genai`) with URL Context (`tools: [{ urlContext: {} }]`)
-- Inserts summary into note (optional timestamp prefix)
+- Inserts summary into note before the detected link (optional timestamp prefix)
 - Settings:
   - Gemini API key
   - Model name
@@ -45,7 +45,7 @@ The plugin sends the URL to Gemini using **URL Context**, then inserts a concise
 2. Copy these files to your vault plugin folder:
    - `manifest.json`
    - `main.js`
-   - `styles.css` (not used here, optional)
+   - `styles.css` (empty here, but included for compatibility)
 3. Target folder:
    - `<your-vault>/.obsidian/plugins/gemini-link-summarizer/`
 4. In Obsidian:
@@ -84,3 +84,13 @@ To publish:
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+## Install From GitHub Release
+
+1. Open the GitHub Release for your version tag.
+2. Download either:
+   - the zip (`obsidian-gemini-link-summarizer-v0.1.0.zip`), or
+   - the individual files (`main.js`, `manifest.json`, `styles.css`, `versions.json`)
+3. Extract/copy into:
+   - `<your-vault>/.obsidian/plugins/gemini-link-summarizer/`
+4. Reload/enable the plugin in Obsidian.
