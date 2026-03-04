@@ -16,19 +16,22 @@ The plugin sends the URL to your selected provider (Gemini or OpenAI), then inse
 - Inserts summary before the detected link (optional timestamp prefix)
 - Settings:
   - Provider (Gemini/OpenAI)
+  - Separate settings blocks for Summary, Gemini, and OpenAI
   - Gemini API key + model
   - OpenAI API key + model
-  - Gemini Flash model preset buttons
-  - OpenAI model preset buttons
-  - Summary length range (characters)
+  - Gemini model presets: `gemini-3.1-flash-lite-preview`, `gemini-3.0-flash-preview`
+  - OpenAI model presets: `gpt-5.3-chat-latest`, `gpt-5.2`
+  - Summary length range (characters), format like `200-600` (minimum `200`)
   - Private-network URL policy toggle (advanced)
-  - Request timeout (ms)
-  - One-click clear stored API keys
+  - Request timeout (ms), range `5000-120000`
+  - One-click clear stored API keys (and command: `ai-link-summarizer.clear-api-keys`)
   - Custom prompt (optional)
   - Include timestamp
 - Notices + clean errors for:
   - no URL found
   - invalid URL
+  - blocked private-network URL
+  - provider request timeout
   - provider request failure
   - unsupported/unreadable page
   - no active editor
@@ -86,6 +89,7 @@ The plugin extracts a URL from the selection or link under cursor. If found, it 
 - API keys are stored locally in Obsidian plugin data and are not encrypted by this plugin.
 - Private-network URLs (`localhost`, `*.local`, and private/link-local IPs) are blocked by default.
 - You can clear all stored API keys from plugin settings or via the command **Clear stored API keys**.
+- Non-overridable prompt constraints are enforced (single paragraph, full sentence ending, configured length range, no secrets disclosure).
 
 ## Known Limitations
 
@@ -94,26 +98,26 @@ The plugin extracts a URL from the selection or link under cursor. If found, it 
 
 ## Releases (GitHub Actions)
 
-Pushing a version tag like `0.1.2` triggers a workflow that builds the plugin and uploads release assets:
+Pushing a version tag like `0.2.1` triggers a workflow that runs a security audit, builds the plugin, and uploads release assets:
 
 - `main.js`
 - `manifest.json`
 - `versions.json`
 - `styles.css`
-- `obsidian-ai-link-summarizer-0.1.2.zip`
+- `obsidian-ai-link-summarizer-0.2.1.zip`
 
 To publish:
 
 ```bash
-git tag 0.1.2
-git push origin 0.1.2
+git tag 0.2.1
+git push origin 0.2.1
 ```
 
 ## Install From GitHub Release
 
 1. Open the GitHub Release for your version tag.
 2. Download either:
-   - the zip (`obsidian-ai-link-summarizer-0.1.2.zip`), or
+   - the zip (`obsidian-ai-link-summarizer-0.2.1.zip`), or
    - the individual files (`main.js`, `manifest.json`, `styles.css`, `versions.json`)
 3. Extract/copy into:
    - `<your-vault>/.obsidian/plugins/gemini-link-summarizer/`
