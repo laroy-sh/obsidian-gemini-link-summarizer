@@ -24,6 +24,7 @@ const DEFAULT_SUMMARY_PROMPT =
   "Use URL Context to read the provided URL, then write one plain-text summary between 200 and 500 characters. Focus on the key point and important details. Do not use bullet points.";
 
 const MENU_TITLE = "Summarize via Gemini";
+const NOTICE_PREFIX = "Gemini link summarizer";
 const UNREADABLE_PAGE_ERROR = "UNREADABLE_PAGE";
 const EMPTY_SUMMARY_ERROR = "EMPTY_SUMMARY";
 
@@ -61,7 +62,7 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
   private async handleSummarizeClick(editorFromMenu: Editor, target: UrlTarget): Promise<void> {
     const activeEditor = this.getActiveEditor();
     if (!activeEditor) {
-      new Notice("Gemini Link Summarizer: no active editor.");
+      new Notice(`${NOTICE_PREFIX}: no active editor.`);
       return;
     }
 
@@ -69,17 +70,17 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     const cleanedUrl = this.cleanExtractedUrl(target.rawUrl);
 
     if (!cleanedUrl) {
-      new Notice("Gemini Link Summarizer: no URL found.");
+      new Notice(`${NOTICE_PREFIX}: no URL found.`);
       return;
     }
 
     if (!this.isValidHttpUrl(cleanedUrl)) {
-      new Notice("Gemini Link Summarizer: invalid URL.");
+      new Notice(`${NOTICE_PREFIX}: invalid URL.`);
       return;
     }
 
     if (!this.settings.apiKey.trim()) {
-      new Notice("Gemini Link Summarizer: add your Gemini API key in plugin settings.");
+      new Notice(`${NOTICE_PREFIX}: add your Gemini API key in plugin settings.`);
       return;
     }
 
@@ -87,7 +88,7 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
       const summary = await this.requestGeminiSummary(cleanedUrl);
       const output = `${this.formatOutput(summary)}\n`;
       editor.replaceRange(output, target.insertBefore);
-      new Notice("Gemini Link Summarizer: summary inserted.");
+      new Notice(`${NOTICE_PREFIX}: summary inserted.`);
     } catch (error: unknown) {
       new Notice(this.toNoticeMessage(error));
     }
@@ -292,11 +293,11 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     const lower = message.toLowerCase();
 
     if (message === UNREADABLE_PAGE_ERROR || message === EMPTY_SUMMARY_ERROR) {
-      return "Gemini Link Summarizer: unsupported or unreadable page.";
+      return `${NOTICE_PREFIX}: unsupported or unreadable page.`;
     }
 
     if (lower.includes("api key") || lower.includes("unauth") || lower.includes("permission")) {
-      return "Gemini Link Summarizer: Gemini request failed. Check API key and model settings.";
+      return `${NOTICE_PREFIX}: Gemini request failed. Check API key and model settings.`;
     }
 
     if (
@@ -306,10 +307,10 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
       lower.includes("unable to fetch") ||
       lower.includes("url context")
     ) {
-      return "Gemini Link Summarizer: unsupported or unreadable page.";
+      return `${NOTICE_PREFIX}: unsupported or unreadable page.`;
     }
 
-    return `Gemini Link Summarizer: Gemini request failure (${message}).`;
+    return `${NOTICE_PREFIX}: Gemini request failure (${message}).`;
   }
 }
 
@@ -324,14 +325,13 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Gemini Link Summarizer" });
+    new Setting(containerEl).setName("Gemini link summarizer").setHeading();
 
     new Setting(containerEl)
       .setName("Gemini API key")
       .setDesc("API key used for Gemini requests.")
       .addText((text) =>
         text
-          .setPlaceholder("AIza...")
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value.trim();
@@ -344,7 +344,6 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
       .setDesc("Gemini model to use.")
       .addText((text) =>
         text
-          .setPlaceholder("gemini-2.5-flash")
           .setValue(this.plugin.settings.modelName)
           .onChange(async (value) => {
             this.plugin.settings.modelName = value.trim() || DEFAULT_SETTINGS.modelName;
@@ -364,7 +363,7 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Include timestamp")
-      .setDesc("Prepends current timestamp before inserted summary.")
+      .setDesc("Prepends the current timestamp before the inserted summary.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.includeTimestamp).onChange(async (value) => {
           this.plugin.settings.includeTimestamp = value;

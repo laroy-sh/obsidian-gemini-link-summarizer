@@ -1,6 +1,6 @@
 {
   "name": "gemini-link-summarizer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Obsidian community plugin to summarize links with Gemini URL Context.",
   "main": "main.js",
   "scripts": {
