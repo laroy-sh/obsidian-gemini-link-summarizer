@@ -70,26 +70,26 @@ The plugin extracts a URL from the selection or link under cursor. If found, it 
 
 ## Releases (GitHub Actions)
 
-Pushing a version tag like `v0.1.0` triggers a workflow that builds the plugin and uploads release assets:
+Pushing a version tag like `0.1.0` triggers a workflow that builds the plugin and uploads release assets:
 
 - `main.js`
 - `manifest.json`
 - `versions.json`
 - `styles.css`
-- `obsidian-gemini-link-summarizer-v0.1.0.zip`
+- `obsidian-gemini-link-summarizer-0.1.0.zip`
 
 To publish:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag 0.1.0
+git push origin 0.1.0
 ```
 
 ## Install From GitHub Release
 
 1. Open the GitHub Release for your version tag.
 2. Download either:
-   - the zip (`obsidian-gemini-link-summarizer-v0.1.0.zip`), or
+   - the zip (`obsidian-gemini-link-summarizer-0.1.0.zip`), or
    - the individual files (`main.js`, `manifest.json`, `styles.css`, `versions.json`)
 3. Extract/copy into:
    - `<your-vault>/.obsidian/plugins/gemini-link-summarizer/`
