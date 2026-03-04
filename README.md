@@ -20,7 +20,10 @@ The plugin sends the URL to your selected provider (Gemini or OpenAI), then inse
   - OpenAI API key + model
   - Gemini Flash model preset buttons
   - OpenAI model preset buttons
-  - Summary length target (characters)
+  - Summary length range (characters)
+  - Private-network URL policy toggle (advanced)
+  - Request timeout (ms)
+  - One-click clear stored API keys
   - Custom prompt (optional)
   - Include timestamp
 - Notices + clean errors for:
@@ -76,6 +79,18 @@ this.registerEvent(
 
 When you right-click in an editor, Obsidian provides the current `menu` and `editor`.
 The plugin extracts a URL from the selection or link under cursor. If found, it adds **Summarize link** to that menu.
+
+## Security Notes
+
+- The plugin sends only the target URL and your prompt settings to the selected provider.
+- API keys are stored locally in Obsidian plugin data and are not encrypted by this plugin.
+- Private-network URLs (`localhost`, `*.local`, and private/link-local IPs) are blocked by default.
+- You can clear all stored API keys from plugin settings or via the command **Clear stored API keys**.
+
+## Known Limitations
+
+- Model output is probabilistic and may be inaccurate or incomplete.
+- The plugin inserts plain text only; it does not execute returned code or commands.
 
 ## Releases (GitHub Actions)
 
