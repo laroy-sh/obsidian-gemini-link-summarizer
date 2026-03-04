@@ -12,12 +12,14 @@ interface GeminiLinkSummarizerSettings {
   openaiModelName: string;
   customPrompt: string;
   includeTimestamp: boolean;
-  summaryLengthChars: number;
+  summaryMinChars: number;
+  summaryMaxChars: number;
 }
 
 interface LegacySettings {
   apiKey?: string;
   modelName?: string;
+  summaryLengthChars?: number;
 }
 
 interface UrlTarget {
@@ -30,27 +32,53 @@ const DEFAULT_SETTINGS: GeminiLinkSummarizerSettings = {
   geminiApiKey: "",
   geminiModelName: "gemini-3.1-flash-lite-preview",
   openaiApiKey: "",
-  openaiModelName: "gpt-4.1-mini",
+  openaiModelName: "gpt-5.3-chat-latest",
   customPrompt: "",
   includeTimestamp: false,
-  summaryLengthChars: 300
+  summaryMinChars: 200,
+  summaryMaxChars: 600
 };
 
 const MENU_TITLE = "Summarize link";
 const NOTICE_PREFIX = "AI link summarizer";
 const UNREADABLE_PAGE_ERROR = "UNREADABLE_PAGE";
 const EMPTY_SUMMARY_ERROR = "EMPTY_SUMMARY";
-const MIN_SUMMARY_LENGTH_CHARS = 120;
-const MAX_SUMMARY_LENGTH_CHARS = 1200;
+const MIN_SUMMARY_LENGTH_CHARS = 200;
+const MAX_SUMMARY_LENGTH_CHARS = 2000;
 const FLASH_MODEL_PRESETS = ["gemini-3.1-flash-lite-preview", "gemini-3.0-flash-preview"] as const;
-const OPENAI_MODEL_PRESETS = ["gpt-4.1-mini", "gpt-4.1"] as const;
+const OPENAI_MODEL_PRESETS = ["gpt-5.3-chat-latest", "gpt-5.2"] as const;
 
 function clampSummaryLengthChars(value: number): number {
   if (!Number.isFinite(value)) {
-    return DEFAULT_SETTINGS.summaryLengthChars;
+    return MIN_SUMMARY_LENGTH_CHARS;
   }
 
   return Math.min(MAX_SUMMARY_LENGTH_CHARS, Math.max(MIN_SUMMARY_LENGTH_CHARS, Math.round(value)));
+}
+
+function normalizeSummaryRange(minValue: number, maxValue: number): { min: number; max: number } {
+  const min = clampSummaryLengthChars(minValue);
+  const max = clampSummaryLengthChars(maxValue);
+
+  if (min <= max) {
+    return { min, max };
+  }
+
+  return { min: max, max: min };
+}
+
+function parseSummaryRangeInput(value: string): { min: number; max: number } | null {
+  const match = value.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return normalizeSummaryRange(Number.parseInt(match[1], 10), Number.parseInt(match[2], 10));
+}
+
+function formatSummaryRange(minValue: number, maxValue: number): string {
+  const range = normalizeSummaryRange(minValue, maxValue);
+  return `${range.min}-${range.max}`;
 }
 
 export default class GeminiLinkSummarizerPlugin extends Plugin {
@@ -85,7 +113,15 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     if (!this.settings.geminiModelName && typeof loaded.modelName === "string") {
       this.settings.geminiModelName = loaded.modelName;
     }
-    this.settings.summaryLengthChars = clampSummaryLengthChars(this.settings.summaryLengthChars);
+    if (typeof loaded.summaryLengthChars === "number") {
+      const legacyTarget = clampSummaryLengthChars(loaded.summaryLengthChars);
+      const migratedRange = normalizeSummaryRange(legacyTarget - 100, legacyTarget + 100);
+      this.settings.summaryMinChars = migratedRange.min;
+      this.settings.summaryMaxChars = migratedRange.max;
+    }
+    const normalizedRange = normalizeSummaryRange(this.settings.summaryMinChars, this.settings.summaryMaxChars);
+    this.settings.summaryMinChars = normalizedRange.min;
+    this.settings.summaryMaxChars = normalizedRange.max;
     this.settings.provider = this.settings.provider === "openai" ? "openai" : "gemini";
     this.settings.geminiModelName = this.settings.geminiModelName.trim() || DEFAULT_SETTINGS.geminiModelName;
     this.settings.openaiModelName = this.settings.openaiModelName.trim() || DEFAULT_SETTINGS.openaiModelName;
@@ -264,6 +300,10 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
     return this.settings.provider === "openai" ? this.settings.openaiApiKey.trim() : this.settings.geminiApiKey.trim();
   }
 
+  private getSummaryRange(): { min: number; max: number } {
+    return normalizeSummaryRange(this.settings.summaryMinChars, this.settings.summaryMaxChars);
+  }
+
   private async requestSummary(url: string): Promise<string> {
     return this.settings.provider === "openai" ? this.requestOpenAiSummary(url) : this.requestGeminiSummary(url);
   }
@@ -323,10 +363,8 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
 
   private buildSummaryPrompt(url: string): string {
     const customPrompt = this.settings.customPrompt.trim();
-    const target = clampSummaryLengthChars(this.settings.summaryLengthChars);
-    const margin = Math.max(40, Math.round(target * 0.2));
-    const minLength = Math.max(MIN_SUMMARY_LENGTH_CHARS, target - margin);
-    const maxLength = Math.min(MAX_SUMMARY_LENGTH_CHARS, target + margin);
+    const { min: minLength, max: maxLength } = this.getSummaryRange();
+    const target = Math.round((minLength + maxLength) / 2);
     const basePrompt =
       customPrompt.length > 0
         ? customPrompt
@@ -347,15 +385,14 @@ export default class GeminiLinkSummarizerPlugin extends Plugin {
   }
 
   private fitSummaryLength(summary: string): string {
-    const target = clampSummaryLengthChars(this.settings.summaryLengthChars);
-    const maxLength = Math.min(MAX_SUMMARY_LENGTH_CHARS, target + Math.max(60, Math.round(target * 0.25)));
+    const { min: minLength, max: maxLength } = this.getSummaryRange();
     if (summary.length <= maxLength) {
       return summary;
     }
 
     const candidate = summary.slice(0, maxLength);
     const sentenceBoundaryIndex = this.findLastSentenceBoundaryIndex(candidate);
-    if (sentenceBoundaryIndex > Math.round(target * 0.6)) {
+    if (sentenceBoundaryIndex >= minLength) {
       return candidate.slice(0, sentenceBoundaryIndex).trim();
     }
 
@@ -497,6 +534,49 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl).setName("Summary settings").setHeading();
+
+    new Setting(containerEl)
+      .setName("Summary length range (characters)")
+      .setDesc(`Use the format min-max (for example 200-600). Minimum value is ${MIN_SUMMARY_LENGTH_CHARS}.`)
+      .addText((text) =>
+        text
+          .setPlaceholder(formatSummaryRange(DEFAULT_SETTINGS.summaryMinChars, DEFAULT_SETTINGS.summaryMaxChars))
+          .setValue(formatSummaryRange(this.plugin.settings.summaryMinChars, this.plugin.settings.summaryMaxChars))
+          .onChange(async (value) => {
+            const parsedRange = parseSummaryRangeInput(value);
+            if (!parsedRange) {
+              return;
+            }
+
+            this.plugin.settings.summaryMinChars = parsedRange.min;
+            this.plugin.settings.summaryMaxChars = parsedRange.max;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Custom prompt (optional)")
+      .setDesc("Overrides the default summarization prompt.")
+      .addTextArea((textArea) =>
+        textArea.setValue(this.plugin.settings.customPrompt).onChange(async (value) => {
+          this.plugin.settings.customPrompt = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Include timestamp")
+      .setDesc("Prepends the current timestamp before the inserted summary.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.includeTimestamp).onChange(async (value) => {
+          this.plugin.settings.includeTimestamp = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl).setName("Gemini settings").setHeading();
+
     new Setting(containerEl)
       .setName("Gemini API key")
       .setDesc("API key used for Gemini requests.")
@@ -539,6 +619,8 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
         })
       );
 
+    new Setting(containerEl).setName("OpenAI settings").setHeading();
+
     new Setting(containerEl)
       .setName("OpenAI API key")
       .setDesc("API key used for OpenAI requests.")
@@ -563,55 +645,17 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
       .setName("OpenAI model presets")
       .setDesc("Quickly choose a common OpenAI model.")
       .addButton((button) =>
-        button.setButtonText("gpt-4.1-mini").onClick(async () => {
+        button.setButtonText("gpt-5.3-chat-latest").onClick(async () => {
           this.plugin.settings.openaiModelName = OPENAI_MODEL_PRESETS[0];
           await this.plugin.saveSettings();
           this.display();
         })
       )
       .addButton((button) =>
-        button.setButtonText("gpt-4.1").onClick(async () => {
+        button.setButtonText("gpt-5.2").onClick(async () => {
           this.plugin.settings.openaiModelName = OPENAI_MODEL_PRESETS[1];
           await this.plugin.saveSettings();
           this.display();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Summary length (characters)")
-      .setDesc(`Target length for the summary paragraph (${MIN_SUMMARY_LENGTH_CHARS}-${MAX_SUMMARY_LENGTH_CHARS}).`)
-      .addText((text) =>
-        text
-          .setPlaceholder(String(DEFAULT_SETTINGS.summaryLengthChars))
-          .setValue(String(this.plugin.settings.summaryLengthChars))
-          .onChange(async (value) => {
-            const parsed = Number.parseInt(value, 10);
-            if (Number.isNaN(parsed)) {
-              return;
-            }
-
-            this.plugin.settings.summaryLengthChars = clampSummaryLengthChars(parsed);
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Custom prompt (optional)")
-      .setDesc("Overrides the default summarization prompt.")
-      .addTextArea((textArea) =>
-        textArea.setValue(this.plugin.settings.customPrompt).onChange(async (value) => {
-          this.plugin.settings.customPrompt = value;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Include timestamp")
-      .setDesc("Prepends the current timestamp before the inserted summary.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.includeTimestamp).onChange(async (value) => {
-          this.plugin.settings.includeTimestamp = value;
-          await this.plugin.saveSettings();
         })
       );
   }
