@@ -702,7 +702,6 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName("General").setHeading();
 
     new Setting(containerEl)
       .setName("Provider")
@@ -804,7 +803,7 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Gemini API key")
-      .setDesc("Key used for Gemini requests. Stored locally in Obsidian plugin data; not encrypted by this plugin.")
+      .setDesc("Key used for gemini requests. Stored locally in Obsidian plugin data; not encrypted by this plugin.")
       .addText((text) =>
         text
           .setValue(this.plugin.settings.geminiApiKey)
@@ -848,7 +847,7 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Openai key")
-      .setDesc("Key used for Openai requests. Stored locally in Obsidian plugin data; not encrypted by this plugin.")
+      .setDesc("Key used for openai requests. Stored locally in Obsidian plugin data; not encrypted by this plugin.")
       .addText((text) =>
         text.setValue(this.plugin.settings.openaiApiKey).onChange(async (value) => {
           this.plugin.settings.openaiApiKey = value.trim();
@@ -868,7 +867,7 @@ class GeminiLinkSummarizerSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Openai model presets")
-      .setDesc("Quickly choose a common Openai model.")
+      .setDesc("Quickly choose a common openai model.")
       .addButton((button) =>
         button.setButtonText("Use gpt-5.3-chat-latest").onClick(async () => {
           this.plugin.settings.openaiModelName = OPENAI_MODEL_PRESETS[0];
